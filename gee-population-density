@@ -1,7 +1,69 @@
+// CIESIN Gridded Population of the World (GPW) Estimated Population Density
+// Initiated by C. Linville
+// Drawing from code examples provided:
+// https://developers.google.com/earth-engine/datasets/catalog/TIGER_2016_Counties
+// https://developers.google.com/earth-engine/datasets/catalog/CIESIN_GPWv411_GPW_Population_Density
+
+
+// Bring in Counties
+var dataset = ee.FeatureCollection('TIGER/2016/Counties');
+
+// Which we will color by State, but rather see-through (opacity = 0.1)
+var visParams = {
+  palette: ['blue', 'green', 'yellow', 'orange', 'red'],
+  min: 0,
+  max: 50,
+  opacity: 0.1,
+};
+
+//Bring in States
+var stateDataset = ee.FeatureCollection('TIGER/2016/States');
+
+// STATEFP is a	STRING that is the State FIPS code(two digits)
+// Usually, we try to keep FIPS codes as strings
+// This time, that's inconvient.
+// Turn the strings into numbers
+dataset = dataset.map(function (f) {
+  return f.set('STATEFP', ee.Number.parse(f.get('STATEFP')));
+});
+
+// This is where we actually do the coloring
+var image = ee.Image().float().paint(dataset, 'STATEFP');
+
+// And add county outlines
+var countyOutlines = ee.Image().float().paint({
+  featureCollection: dataset,
+  color: 'black',
+  width: 2,
+});
+
+// And add state outlines, a little thicker
+var stateOutlines = ee.Image().float().paint({
+  featureCollection: stateDataset,
+  color: 'black',
+  width: 3,
+});
+
+// Now to get the CIESIN Gridded Population of the Word (GPW) data
+// In particular, estimates of population density for every ~ 10 km x 10 km grid cell
 var dataset = ee.ImageCollection("CIESIN/GPWv411/GPW_Population_Density").first();
 var raster = dataset.select('population_density');
-var rasterMasked = raster.updateMask(raster.gt(500))
-Map.setCenter(79.1, 19.81, 3);
+
+// Let's just pay attention to where population density is estimated to be > 500 persons per sq. km
+// The Illinois City of Champaign (1,473.1 / sq km) is more than that
+// The Illinois County of Champaign (78 / sq km) is less than that
+// The Ohio County of Champaign (36 / sq km) is less densely populated than the Illinois County of Champaign
+var rasterMasked = raster.updateMask(raster.gt(500));
+
+// Now let's set up the map and add the layers
+// Center over the US
+Map.setCenter(-99.844, 37.649, 5);
+// The 'satellite' basemap works a bit better with the other layers as currently renderd
+Map.setOptions('satellite')
+Map.addLayer(image, visParams, 'TIGER/2016/Counties');
+Map.addLayer(countyOutlines, {}, 'county outlines');
+Map.addLayer(dataset, null, 'for Inspector', false);
+
 var raster_vis = {
   "max": 50000.0,
   "palette": [
@@ -14,5 +76,5 @@ var raster_vis = {
   ],
   "min": 500.0
 };
-Map.addLayer(rasterMasked, raster_vis);
-
+// Now the masked population density estimates themselves
+Map.addLayer(rasterMasked, raster_vis)
